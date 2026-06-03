@@ -24,8 +24,11 @@ connectDB();
 app.use(logger);
 
 app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+//03/06/2026
+// app.use(express.json());
+// app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 // app.use(cors({
 //   origin: ['http://localhost', 'http://localhost:80','http://localhost:3000','http://localhost:5173','https://jeevan-bay.vercel.app','https://jeevan-frontend-two.vercel.app','http://localhost:3001'], // Replace with your frontend URL
 //   credentials: true,
@@ -43,7 +46,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 //app.use(cors(corsOptions));
-
+const diocese = require("./routes/dioceseRouter");
+const priest = require("./routes/priestRouter");
+const position = require("./routes/positionRouter");
+const department = require("./routes/departmentRoutes");
+app.use('/congregation', require('./routes/congregationRouter'));
 const forane = require("./routes/forane");
 const parish = require("./routes/parish");
 const authRouter = require('./routes/auth.routes');
@@ -77,6 +84,9 @@ const balance  = require("./routes/balanceRoutes");
 const adminManagementRoutes = require('./routes/adminmanagement');
 const backupRoutes = require('./routes/backup');
 const transactionAnalyticsRoutes = require('./routes/transactionAnalyticsRoutes');
+const printTemplateRoutes = require("./routes/printTemplate.routes");
+const marriageRouter = require("./routes/marriageRouter");
+const printsettings = require("./routes/printSettingsRoutes");
 app.use(session({
   secret: process.env.SESSION_SECRET || 'fallback_secret_key',
   resave: false,
@@ -91,10 +101,14 @@ app.get("/", (req, res) => {
   res.status(200);
 });
 
-
+app.use('/assignment', require('./routes/assignmentRouter'));
 // Add this route
 app.use('/analytics', transactionAnalyticsRoutes);
 //app.use("/auth", auth);
+app.use("/diocese", diocese);
+app.use("/priest", priest);
+app.use("/position", position);
+app.use("/department", department);
 app.use("/forane", forane);
 app.use("/parish", parish);
 app.use("/koottayma", koottayma);
@@ -110,6 +124,9 @@ app.use("/personup", personupload);
 app.use("/transup", transupload);
 app.use("/allocationsettings", allocationSettings);
 app.use('/community-settings', communitySettings);
+app.use("/print-template", printTemplateRoutes);
+app.use("/marriage", marriageRouter);
+app.use("/print-settings", printsettings);
 app.use('/slabs', slab);
 app.use("/fund", fund);
 app.use("/parishdata", parishdata);

@@ -1,0 +1,65 @@
+const Priest = require("../models/Priest");
+
+async function getAllPriests(req, res) {
+  try {
+    const priests = await Priest.find()
+      .populate("homeParish", "name")
+      .populate("homeCongregation", "name")
+      .select("_id name hname dob ordinationDate email phone homeType homeParish homeParishText homeCongregation status statusDate restHome");
+    res.status(200).json(priests);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "An error occurred while fetching priest data." });
+  }
+}
+
+async function getOnePriest(req, res) {
+  try {
+    const priest = await Priest.findById(req.params.priestid)
+      .populate("homeParish", "name")
+      .populate("homeCongregation", "name");
+    if (!priest) return res.status(404).json({ message: "Priest not found." });
+    res.status(200).json(priest);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "An error occurred while fetching priest data." });
+  }
+}
+
+async function createNewPriest(req, res) {
+  try {
+    const { name, hname, dob, ordinationDate, homeType, status } = req.body;
+    if (!name || !dob || !ordinationDate || !homeType || !status)
+      return res.status(400).json({ message: "Required fields are missing." });
+
+    const newPriest = await new Priest(req.body).save();
+    res.status(201).json({ message: "Priest created successfully.", priest: newPriest });
+  } catch (err) {
+    console.error("Error creating Priest:", err);
+    res.status(500).json({ message: "An error occurred while creating priest." });
+  }
+}
+
+async function updatePriest(req, res) {
+  try {
+    const priest = await Priest.findByIdAndUpdate(req.params.priestid, req.body, { new: true });
+    if (!priest) return res.status(404).json({ message: "Priest not found." });
+    res.status(200).json({ message: "Priest updated successfully." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "An error occurred while updating priest." });
+  }
+}
+
+async function deletePriest(req, res) {
+  try {
+    const priest = await Priest.findByIdAndDelete(req.params.priestid);
+    if (!priest) return res.status(404).json({ message: "Priest not found." });
+    res.status(200).json({ message: "Priest deleted successfully." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "An error occurred while deleting priest." });
+  }
+}
+
+module.exports = { getAllPriests, getOnePriest, createNewPriest, updatePriest, deletePriest };
