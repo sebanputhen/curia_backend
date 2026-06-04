@@ -23,7 +23,15 @@ async function getSettings(req, res) {
     res.status(500).json({ message: "Failed to fetch print settings." });
   }
 }
-
+async function getLogo(req, res) {
+  try {
+    const { collectionName } = req.params;
+    const doc = await PrintSettings.findOne({ collectionName }, { logoDataUrl: 1 });
+    res.status(200).json({ logoDataUrl: doc?.logoDataUrl || "" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch logo." });
+  }
+}
 
 // ── PUT ───────────────────────────────────────────────────────────────────────
 // Splits logoDataUrl out so the main doc stays small (fast to load on every
@@ -68,4 +76,4 @@ async function resetSettings(req, res) {
   }
 }
 
-module.exports = { getSettings, saveSettings, resetSettings };
+module.exports = { getSettings, saveSettings, resetSettings, getLogo };
