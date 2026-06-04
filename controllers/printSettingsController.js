@@ -11,19 +11,19 @@ const PrintSettings = require("../models/printSettingsModel");
 async function getSettings(req, res) {
   try {
     const { collectionName = "marriage" } = req.params;
-    const settings = await PrintSettings.findOne({ collectionName });
+    // Exclude logoDataUrl from the main fetch — load it separately only when needed
+    const settings = await PrintSettings.findOne(
+      { collectionName },
+      { logoDataUrl: 0 }  // ← exclude the heavy field
+    );
 
-    if (!settings) {
-      // No record yet — return 404 so frontend knows to use defaults
-      return res.status(404).json({ message: "No print settings found." });
-    }
-
+    if (!settings) return res.status(404).json({ message: "No print settings found." });
     res.status(200).json(settings);
   } catch (err) {
-    console.error("getSettings:", err);
     res.status(500).json({ message: "Failed to fetch print settings." });
   }
 }
+
 
 // ── PUT ───────────────────────────────────────────────────────────────────────
 // Splits logoDataUrl out so the main doc stays small (fast to load on every
