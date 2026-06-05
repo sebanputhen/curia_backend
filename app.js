@@ -46,6 +46,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 //app.use(cors(corsOptions));
+const path = require("path");
 const diocese = require("./routes/dioceseRouter");
 const priest = require("./routes/priestRouter");
 const position = require("./routes/positionRouter");
