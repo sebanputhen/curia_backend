@@ -70,11 +70,14 @@ async function uploadLogo(req, res) {
     }
 
     // Persist the new URL in the settings doc
-    await PrintSettings.findOneAndUpdate(
-      { collectionName },
-      { logoUrl },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+   await PrintSettings.findOneAndUpdate(
+  { collectionName },
+  {
+    $set:   { logoUrl },
+    $unset: { logoDataUrl: "" },        // ← removes old field
+  },
+  { upsert: true, new: true, setDefaultsOnInsert: true }
+);
 
     res.status(200).json({ logoUrl });
   } catch (err) {
@@ -98,10 +101,13 @@ async function saveSettings(req, res) {
     if (rest.logoUrl?.startsWith("blob:")) delete rest.logoUrl;
 
     const settings = await PrintSettings.findOneAndUpdate(
-      { collectionName },
-      { ...rest, collectionName },
-      { upsert: true, new: true, runValidators: false, setDefaultsOnInsert: true }
-    );
+    { collectionName },
+    {
+        $set:   { ...rest, collectionName },
+        $unset: { logoDataUrl: "" },        // ← removes old field
+    },
+  { upsert: true, new: true, runValidators: false, setDefaultsOnInsert: true }
+);
 
     res.status(200).json({ message: "Print settings saved.", settings });
   } catch (err) {
