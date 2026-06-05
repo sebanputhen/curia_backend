@@ -1,11 +1,17 @@
 // routes/printSettingsRoutes.js
 const express = require("express");
 const router  = express.Router();
-const { getSettings, saveSettings, resetSettings ,getLogo} = require("../controllers/printSettingsController");
+const {
+  getSettings, saveSettings, resetSettings,
+  uploadLogo, uploadLogoMiddleware,
+} = require("../controllers/printSettingsController");
 
-// All routes are under /print-settings
+// Settings CRUD
 router.get   ("/:collectionName", getSettings);
 router.put   ("/:collectionName", saveSettings);
 router.delete("/:collectionName", resetSettings);
-router.get("/:collectionName/logo", getLogo);
+
+// Logo upload — multer middleware runs first, then the handler
+router.post("/logo/:collectionName", uploadLogoMiddleware, uploadLogo);
+
 module.exports = router;

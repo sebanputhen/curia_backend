@@ -104,6 +104,7 @@ app.get("/", (req, res) => {
 app.use('/assignment', require('./routes/assignmentRouter'));
 // Add this route
 app.use('/analytics', transactionAnalyticsRoutes);
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 //app.use("/auth", auth);
 app.use("/diocese", diocese);
 app.use("/priest", priest);
