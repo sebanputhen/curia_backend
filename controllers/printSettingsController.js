@@ -1,45 +1,60 @@
 // controllers/printSettingsController.js
-//
-// Routes:
-//   GET    /print-settings/:collectionName          → return settings doc (404 if none)
-//   PUT    /print-settings/:collectionName          → upsert settings, return { message, settings }
-//   DELETE /print-settings/:collectionName          → delete doc (reset), return { message }
-//   POST   /upload/logo/:collectionName             → upload logo file, return { logoUrl }
 
-const path    = require("path");
-const fs      = require("fs");
-const multer  = require("multer");
+const multer        = require("multer");
+const axios         = require("axios");
 const PrintSettings = require("../models/printSettingsModel");
 
-// ── Multer — logo file upload ─────────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, "../uploads/logos");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext  = path.extname(file.originalname).toLowerCase();
-    const name = `logo_${req.params.collectionName}_${Date.now()}${ext}`;
-    cb(null, name);
-  },
-});
-
+// ── Multer — memory storage (no disk, works on Vercel) ───────────────────────
 const upload = multer({
-  storage,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = [".png", ".jpg", ".jpeg", ".webp", ".svg"];
-    if (allowed.includes(path.extname(file.originalname).toLowerCase())) cb(null, true);
-    else cb(new Error("Only image files are allowed (PNG, JPEG, WebP, SVG)"));
+    const allowed = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Only PNG, JPEG, WebP or SVG images are allowed"));
   },
 });
 
-// Export the multer middleware so the router can use it
 const uploadLogoMiddleware = upload.single("logo");
 
+// ── GitHub helper ─────────────────────────────────────────────────────────────
+async function commitFileToGitHub(filePath, fileBuffer) {
+  const token  = process.env.GITHUB_TOKEN;
+  const owner  = process.env.GITHUB_OWNER;
+  const repo   = process.env.GITHUB_REPO;
+  const branch = process.env.GITHUB_BRANCH || "main";
+
+  if (!token || !owner || !repo) {
+    throw new Error("Missing GITHUB_TOKEN, GITHUB_OWNER or GITHUB_REPO in .env");
+  }
+
+  const apiUrl  = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept:        "application/vnd.github+json",
+  };
+
+  // Check if file already exists — need SHA to update
+  let sha;
+  try {
+    const { data } = await axios.get(apiUrl, { headers });
+    sha = data.sha;
+  } catch (err) {
+    if (err.response?.status !== 404) throw err; // 404 = new file, anything else is a real error
+  }
+
+  // Commit the file (create or update)
+  await axios.put(apiUrl, {
+    message: `chore: update logo (${filePath})`,
+    content: fileBuffer.toString("base64"),
+    branch,
+    ...(sha ? { sha } : {}),
+  }, { headers });
+
+  return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
+}
+
 // ── GET settings ──────────────────────────────────────────────────────────────
-// logoUrl is just a short string now — no need to exclude it
 async function getSettings(req, res) {
   try {
     const { collectionName = "marriage" } = req.params;
@@ -53,61 +68,58 @@ async function getSettings(req, res) {
 }
 
 // ── POST logo upload ──────────────────────────────────────────────────────────
-// Saves file to /uploads/logos/, deletes the old logo file if one existed,
-// and updates the logoUrl field in the DB doc immediately.
 async function uploadLogo(req, res) {
   if (!req.file) return res.status(400).json({ message: "No file uploaded." });
 
   const { collectionName = "marriage" } = req.params;
-  const logoUrl = `/uploads/logos/${req.file.filename}`;
+  const ext      = req.file.originalname.split(".").pop().toLowerCase();
+  const filePath = `uploads/logos/logo_${collectionName}.${ext}`;
+
+  console.log("uploadLogo called — collectionName:", collectionName, "filePath:", filePath);
 
   try {
-    // Delete previous logo file from disk (keep uploads folder clean)
-    const existing = await PrintSettings.findOne({ collectionName }, { logoUrl: 1 });
-    if (existing?.logoUrl) {
-      const oldPath = path.join(__dirname, "..", existing.logoUrl);
-      if (fs.existsSync(oldPath)) fs.unlink(oldPath, () => {}); // non-blocking
-    }
+    const logoUrl = await commitFileToGitHub(filePath, req.file.buffer);
+    console.log("commitFileToGitHub returned:", logoUrl);
 
-    // Persist the new URL in the settings doc
-   await PrintSettings.findOneAndUpdate(
-  { collectionName },
-  {
-    $set:   { logoUrl },
-    $unset: { logoDataUrl: "" },        // ← removes old field
-  },
-  { upsert: true, new: true, setDefaultsOnInsert: true }
-);
+    if (!logoUrl) throw new Error("commitFileToGitHub returned empty URL");
 
-    res.status(200).json({ logoUrl });
+    // Use native MongoDB driver — bypasses Mongoose strict mode completely
+    await PrintSettings.collection.updateOne(
+      { collectionName },
+      {
+        $set:   { collectionName, logoUrl, showLogo: true },
+        $unset: { logoDataUrl: "" },
+      },
+      { upsert: true }
+    );
+
+    // Verify the save by fetching fresh
+    const saved = await PrintSettings.findOne({ collectionName }).lean();
+    console.log("uploadLogo verified — logoUrl in DB:", saved?.logoUrl);
+
+    res.status(200).json({ logoUrl, showLogo: true });
   } catch (err) {
-    console.error("uploadLogo:", err);
-    // Clean up uploaded file if DB update failed
-    fs.unlink(req.file.path, () => {});
-    res.status(500).json({ message: "Failed to save logo URL." });
+    console.error("uploadLogo error:", err.response?.data || err.message);
+    res.status(500).json({ message: err.response?.data?.message || err.message });
   }
 }
 
 // ── PUT settings ──────────────────────────────────────────────────────────────
-// Single-step upsert — no logo base64 to split out any more
 async function saveSettings(req, res) {
   try {
     const { collectionName = "marriage" } = req.params;
-
-    // Strip any legacy / accidental base64 fields from the payload
     const { logoDataUrl, ...rest } = req.body;
 
-    // If client sends a blob: URL (upload still in progress), ignore it
     if (rest.logoUrl?.startsWith("blob:")) delete rest.logoUrl;
 
     const settings = await PrintSettings.findOneAndUpdate(
-    { collectionName },
-    {
+      { collectionName },
+      {
         $set:   { ...rest, collectionName },
-        $unset: { logoDataUrl: "" },        // ← removes old field
-    },
-  { upsert: true, new: true, runValidators: false, setDefaultsOnInsert: true }
-);
+        $unset: { logoDataUrl: "" },
+      },
+      { upsert: true, new: true, runValidators: false, setDefaultsOnInsert: true }
+    );
 
     res.status(200).json({ message: "Print settings saved.", settings });
   } catch (err) {
@@ -117,18 +129,10 @@ async function saveSettings(req, res) {
 }
 
 // ── DELETE (reset) ────────────────────────────────────────────────────────────
-// Also removes the logo file from disk
 async function resetSettings(req, res) {
   try {
     const { collectionName = "marriage" } = req.params;
-    const doc = await PrintSettings.findOneAndDelete({ collectionName });
-
-    // Remove logo file if one was stored
-    if (doc?.logoUrl) {
-      const logoPath = path.join(__dirname, "..", doc.logoUrl);
-      if (fs.existsSync(logoPath)) fs.unlink(logoPath, () => {});
-    }
-
+    await PrintSettings.findOneAndDelete({ collectionName });
     res.status(200).json({ message: "Print settings reset to defaults." });
   } catch (err) {
     console.error("resetSettings:", err);
